@@ -360,6 +360,15 @@ export default function TodoBoard({
         </main>
       </div>
 
+      <button
+        type="button"
+        onClick={openAddTodo}
+        className="fixed bottom-6 right-6 z-30 flex h-16 w-16 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition-transform"
+        aria-label="タスクを追加"
+      >
+        <PlusIcon className="h-8 w-8" />
+      </button>
+
       <TodoForm
         open={todoFormOpen}
         initial={editingTodo}
