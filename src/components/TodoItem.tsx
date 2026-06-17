@@ -1,6 +1,33 @@
+import { type ReactNode } from "react";
 import type { Todo, Priority } from "@/lib/types";
 import { PRIORITY_LABELS } from "@/lib/types";
 import { CheckIcon, EditIcon, TrashIcon } from "./icons";
+
+// 説明文中の http(s) URL を <a> 化する。URL 末尾の句読点はリンクから除外。
+const URL_RE = /(https?:\/\/[^\s<>"]+[^\s<>"。、，．!?\)\]\}>])/g;
+function linkify(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = URL_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    parts.push(
+      <a
+        key={key++}
+        href={match[0]}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-600 underline break-all hover:text-blue-700 dark:text-blue-400"
+      >
+        {match[0]}
+      </a>
+    );
+    lastIndex = URL_RE.lastIndex;
+  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+  return parts;
+}
 
 interface Props {
   todo: Todo;
@@ -117,8 +144,8 @@ export default function TodoItem({
         </div>
 
         {todo.description && (
-          <p className="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
-            {todo.description}
+          <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-xs text-gray-500 dark:text-gray-400">
+            {linkify(todo.description)}
           </p>
         )}
       </div>
