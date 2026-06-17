@@ -4,6 +4,7 @@ import type {
   Status,
   TodoInput,
   CategoryInput,
+  Recurrence,
 } from "./types";
 import type { AppConfig, StorageMode } from "./settings";
 import { modeOf } from "./settings";
@@ -89,6 +90,74 @@ function descendantIds(categories: Category[], id: string): Set<string> {
 const RETRY_BACKOFF = [200, 500, 1200];
 const MAX_ATTEMPTS = 4;
 
+// YYYY-MM-DD（ローカルタイム）に整形
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function parseISODate(s: string): Date {
+  const [y, m, d] = s.split("-").map((v) => parseInt(v, 10));
+  return new Date(y, m - 1, d);
+}
+
+// recurrence の現 dueDate の次の有効日を求める。
+// strict に「現 dueDate より後」かつ「今日以降」を満たす最初の対象曜日。
+export function nextDueDate(
+  current: Date,
+  daysOfWeek: number[],
+  today: Date
+): Date {
+  if (daysOfWeek.length === 0) return today;
+  const target = new Date(current);
+  // 最大2週間（14日）走査すれば必ず見つかる（少なくとも1曜日が選ばれている前提）
+  for (let i = 0; i < 21; i++) {
+    target.setDate(target.getDate() + 1);
+    if (daysOfWeek.includes(target.getDay()) && target.getTime() >= today.getTime())
+      return target;
+  }
+  return today; // fallback（実際には到達しない）
+}
+
+// 期限切れの「完了済み × 繰り返しあり」Todoを未完了に戻し、次回期日へ進める。
+// 何も変更が無ければ元の参照をそのまま返す（idempotent）。
+export function applyRollover(todos: Todo[], today: Date): Todo[] {
+  const today0 = new Date(today);
+  today0.setHours(0, 0, 0, 0);
+  let changed = false;
+  const next = todos.map((t) => {
+    if (!t.recurrence || t.status !== "done" || !t.dueDate) return t;
+    const due = parseISODate(t.dueDate);
+    if (due.getTime() > today0.getTime()) return t; // まだ未来
+    const newDue = nextDueDate(due, t.recurrence.daysOfWeek, today0);
+    changed = true;
+    return {
+      ...t,
+      status: "todo" as Status,
+      dueDate: toISODate(newDue),
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  return changed ? next : todos;
+}
+
+// 既存 JSON に recurrence キーが無いケースの後方互換
+function normalizeTodos(todos: Todo[]): Todo[] {
+  return todos.map((t) => ({ ...t, recurrence: t.recurrence ?? null }));
+}
+
+// daysOfWeek を 0〜6 の範囲内に揃え、重複を除いてソート。空配列は null 扱いに。
+function normalizeRecurrence(r: Recurrence | null): Recurrence | null {
+  if (!r) return null;
+  const days = Array.from(
+    new Set(r.daysOfWeek.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))
+  ).sort((a, b) => a - b);
+  if (days.length === 0) return null;
+  return { freq: "weekly", daysOfWeek: days };
+}
+
 export class Store {
   readonly mode: StorageMode;
   private cfg: AppConfig;
@@ -108,12 +177,12 @@ export class Store {
         gh.getFile<Todo[]>(this.cfg, TODOS_PATH),
         gh.getFile<Category[]>(this.cfg, CATEGORIES_PATH),
       ]);
-      this.todos = t.data;
+      this.todos = normalizeTodos(t.data);
       this.todosSha = t.sha;
       this.categories = c.data;
       this.catsSha = c.sha;
     } else {
-      this.todos = readLS<Todo[]>(LS_TODOS, []);
+      this.todos = normalizeTodos(readLS<Todo[]>(LS_TODOS, []));
       this.categories = readLS<Category[]>(LS_CATEGORIES, DEFAULT_CATEGORIES);
       if (!localStorage.getItem(LS_CATEGORIES)) {
         writeLS(LS_CATEGORIES, this.categories); // 初回シード
@@ -122,12 +191,23 @@ export class Store {
     return { todos: this.todos, categories: this.categories };
   }
 
+  // 起動直後（store.load() の後）に呼ぶ。期限切れの繰り返し完了Todoがあれば
+  // rollover した結果を返す（必要な時のみ PUT、変化なしなら null で API 呼び出しゼロ）。
+  rolloverOnLoad(): TodoMutation | null {
+    const rolled = applyRollover(this.todos, new Date());
+    if (rolled === this.todos) return null;
+    return this.commitTodos((todos) => todos, `Weekly rollover`);
+  }
+
   // --- 共通: 楽観更新 + 同期Promise（GitHubモードは409再試行付き） ---
 
   private commitTodos(
-    transform: (todos: Todo[]) => Todo[],
+    userTransform: (todos: Todo[]) => Todo[],
     message: string
   ): TodoMutation {
+    // 操作のたびに rollover を同梱 — 追加API呼び出しはゼロ。
+    const transform = (todos: Todo[]) =>
+      applyRollover(userTransform(todos), new Date());
     const prev = this.todos;
     const next = transform(prev);
     this.todos = next;
@@ -253,6 +333,7 @@ export class Store {
       createdAt: now(),
       updatedAt: now(),
       tags: input.tags ?? [],
+      recurrence: normalizeRecurrence(input.recurrence ?? null),
     };
     return this.commitTodos(
       (todos) => [...todos, todo],
@@ -281,6 +362,10 @@ export class Store {
                     ? patch.dueDate || null
                     : t.dueDate,
                 tags: patch.tags ?? t.tags,
+                recurrence:
+                  patch.recurrence !== undefined
+                    ? normalizeRecurrence(patch.recurrence)
+                    : t.recurrence,
                 updatedAt: ts,
               }
             : t

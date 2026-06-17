@@ -4,6 +4,14 @@
 export type Priority = "high" | "medium" | "low";
 export type Status = "todo" | "in_progress" | "done";
 
+// 繰り返し設定。現状は週次のみ。daysOfWeek は 0(日)〜6(土)。複数選択可。
+export interface Recurrence {
+  freq: "weekly";
+  daysOfWeek: number[];
+}
+
+export const DAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
+
 export interface Category {
   id: string;
   name: string;
@@ -23,6 +31,7 @@ export interface Todo {
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
   tags: string[];
+  recurrence: Recurrence | null; // 繰り返しなしは null
 }
 
 // カテゴリツリー表示用（子を再帰的に保持）
@@ -39,6 +48,7 @@ export interface TodoInput {
   status?: Status;
   dueDate?: string | null;
   tags?: string[];
+  recurrence?: Recurrence | null;
 }
 
 export interface CategoryInput {

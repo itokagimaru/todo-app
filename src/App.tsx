@@ -32,6 +32,9 @@ export default function App() {
         setTodos(res.todos);
         setCategories(res.categories);
         setLoading(false);
+        // 起動時 rollover: 期限切れの繰り返し完了Todoを未完了に戻す
+        const rollover = store.rolloverOnLoad();
+        if (rollover) apply(rollover);
       },
       (e) => {
         if (cancelled) return;

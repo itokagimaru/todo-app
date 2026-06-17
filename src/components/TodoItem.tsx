@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import type { Todo, Priority } from "@/lib/types";
-import { PRIORITY_LABELS } from "@/lib/types";
+import { PRIORITY_LABELS, DAY_LABELS } from "@/lib/types";
 import { CheckIcon, EditIcon, TrashIcon } from "./icons";
 
 // 説明文中の http(s) URL を <a> 化する。URL 末尾の句読点はリンクから除外。
@@ -128,8 +128,20 @@ export default function TodoItem({
                   : "text-gray-500 dark:text-gray-400"
               }`}
             >
-              {todo.dueDate}
-              {overdue && " (期限切れ)"}
+              {todo.dueDate} ({DAY_LABELS[new Date(todo.dueDate + "T00:00").getDay()]})
+              {overdue && " 期限切れ"}
+            </span>
+          )}
+
+          {todo.recurrence && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700 dark:bg-purple-500/20 dark:text-purple-300"
+              title="毎週繰り返し"
+            >
+              🔄
+              {todo.recurrence.daysOfWeek
+                .map((d) => DAY_LABELS[d])
+                .join("")}
             </span>
           )}
 

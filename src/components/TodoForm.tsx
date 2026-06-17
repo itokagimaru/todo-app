@@ -3,6 +3,7 @@ import type { Todo, Category, Priority, Status } from "@/lib/types";
 import {
   PRIORITY_LABELS,
   STATUS_LABELS,
+  DAY_LABELS,
   buildCategoryTree,
   type CategoryNode,
 } from "@/lib/types";
@@ -47,6 +48,8 @@ export default function TodoForm({
   const [status, setStatus] = useState<Status>("todo");
   const [dueDate, setDueDate] = useState("");
   const [tags, setTags] = useState("");
+  const [recurEnabled, setRecurEnabled] = useState(false);
+  const [recurDays, setRecurDays] = useState<number[]>([]);
 
   // モーダルを開くたびに初期値を流し込む
   useEffect(() => {
@@ -59,6 +62,8 @@ export default function TodoForm({
       setStatus(initial.status);
       setDueDate(initial.dueDate ?? "");
       setTags(initial.tags.join(", "));
+      setRecurEnabled(!!initial.recurrence);
+      setRecurDays(initial.recurrence?.daysOfWeek ?? []);
     } else {
       setTitle("");
       setDescription("");
@@ -67,6 +72,8 @@ export default function TodoForm({
       setStatus("todo");
       setDueDate("");
       setTags("");
+      setRecurEnabled(false);
+      setRecurDays([]);
     }
   }, [open, initial, defaultCategoryId]);
 
@@ -77,6 +84,10 @@ export default function TodoForm({
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
+    if (recurEnabled && recurDays.length === 0) {
+      alert("繰り返しを有効にする場合は少なくとも1つの曜日を選んでください");
+      return;
+    }
     onSubmit({
       title,
       description,
@@ -88,8 +99,27 @@ export default function TodoForm({
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean),
+      recurrence: recurEnabled
+        ? { freq: "weekly", daysOfWeek: recurDays }
+        : null,
     });
   }
+
+  function toggleDay(d: number) {
+    setRecurDays((prev) =>
+      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()
+    );
+  }
+
+  // 期日が変わったら、初期状態でその曜日が選ばれていなければ自動で追加する
+  // （繰り返しを有効化した直後の出発点として）
+  useEffect(() => {
+    if (!recurEnabled) return;
+    if (!dueDate) return;
+    const day = new Date(dueDate + "T00:00").getDay();
+    setRecurDays((prev) => (prev.includes(day) ? prev : [...prev, day].sort()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recurEnabled]);
 
   return (
     <div
@@ -204,6 +234,45 @@ export default function TodoForm({
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                繰り返し
+              </label>
+              <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={recurEnabled}
+                  onChange={(e) => setRecurEnabled(e.target.checked)}
+                  className="h-3.5 w-3.5"
+                />
+                毎週
+              </label>
+            </div>
+            {recurEnabled && (
+              <div className="flex flex-wrap gap-1">
+                {DAY_LABELS.map((label, idx) => {
+                  const active = recurDays.includes(idx);
+                  return (
+                    <button
+                      type="button"
+                      key={idx}
+                      onClick={() => toggleDay(idx)}
+                      className={`rounded-full px-2.5 py-1 text-xs transition-colors ${
+                        active
+                          ? "bg-blue-600 text-white"
+                          : "border border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                      }`}
+                      aria-pressed={active}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
