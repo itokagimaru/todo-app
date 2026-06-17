@@ -77,6 +77,17 @@ export default function TodoForm({
     }
   }, [open, initial, defaultCategoryId]);
 
+  // 期日が変わったら、繰り返しON時にその曜日を自動追加する。
+  // フックは早期return より上に置かないと Rules of Hooks 違反になるので注意。
+  useEffect(() => {
+    if (!open) return;
+    if (!recurEnabled) return;
+    if (!dueDate) return;
+    const day = new Date(dueDate + "T00:00").getDay();
+    setRecurDays((prev) => (prev.includes(day) ? prev : [...prev, day].sort()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, recurEnabled]);
+
   if (!open) return null;
 
   const options = buildOptions(categories);
@@ -110,16 +121,6 @@ export default function TodoForm({
       prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()
     );
   }
-
-  // 期日が変わったら、初期状態でその曜日が選ばれていなければ自動で追加する
-  // （繰り返しを有効化した直後の出発点として）
-  useEffect(() => {
-    if (!recurEnabled) return;
-    if (!dueDate) return;
-    const day = new Date(dueDate + "T00:00").getDay();
-    setRecurDays((prev) => (prev.includes(day) ? prev : [...prev, day].sort()));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recurEnabled]);
 
   return (
     <div
