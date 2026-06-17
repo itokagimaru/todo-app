@@ -9,7 +9,10 @@ import { SettingsIcon } from "@/components/icons";
 
 export default function App() {
   const [config, setConfig] = useState<AppConfig>(() => loadConfig());
-  const store = useMemo(() => new Store(config), [config]);
+  const [reloadKey, setReloadKey] = useState(0);
+  // 書き込みエラー時は reloadKey を進めて Store を作り直し、sha などの内部状態を
+  // 完全に初期化してから再ロードする。古い sha が残って 409 ループに陥るのを防ぐ。
+  const store = useMemo(() => new Store(config), [config, reloadKey]);
 
   const [todos, setTodos] = useState<Todo[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -51,13 +54,9 @@ export default function App() {
       if (res.categories) setCategories(res.categories);
     } catch (e) {
       alert(e instanceof Error ? e.message : "保存に失敗しました");
-      try {
-        const fresh = await store.load();
-        setTodos(fresh.todos);
-        setCategories(fresh.categories);
-      } catch {
-        /* リロードも失敗した場合はそのまま */
-      }
+      // Store ごと作り直して内部の sha キャッシュをリセット。
+      // useEffect が新 Store で load() を実行し、新鮮な sha を取り直す。
+      setReloadKey((k) => k + 1);
     } finally {
       setSyncing(false);
     }

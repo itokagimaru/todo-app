@@ -55,10 +55,16 @@ export async function getFile<T>(
   cfg: AppConfig,
   path: string
 ): Promise<FileData<T>> {
+  // ブラウザの HTTP キャッシュを完全に無視する。
+  // GitHub Contents API は ETag を返すため、キャッシュが効くと stale な sha を
+  // 受け取り、続く PUT がすべて 409 になる。t パラメータも追加してさらに保険。
   const url = `${API}/repos/${cfg.owner}/${cfg.repo}/contents/${path}?ref=${encodeURIComponent(
     cfg.branch
-  )}`;
-  const res = await fetch(url, { headers: authHeaders(cfg) });
+  )}&t=${Date.now()}`;
+  const res = await fetch(url, {
+    headers: { ...authHeaders(cfg), "Cache-Control": "no-cache" },
+    cache: "no-store",
+  });
   if (!res.ok) {
     throw new GitHubError(
       res.status,
