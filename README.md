@@ -59,15 +59,84 @@ npm run preview  # ビルド結果をローカル確認
 > 🔒 サーバーが無いため PAT はこの端末のブラウザ(localStorage)にのみ保存されます。
 > 対象を1リポジトリ・Contents権限のみに絞ることで、万一の漏洩時も影響をそのTodoリポジトリに限定します。
 
-## デプロイ（GitHub Pages・無料・常時稼働）
+## GitHub Pages での運用
 
-1. この `todo-app` を **public** リポジトリとして push（ソースに秘密情報は含みません）。
-2. リポジトリの Settings → Pages → Source を **GitHub Actions** に設定。
-3. `main` に push すると `.github/workflows/deploy.yml` がビルド＆公開。
-4. 公開URL `https://<user>.github.io/todo-app/` をスマホで開き、PWAでホームに追加。
+### 1. リポジトリをフォークする
 
-> リポジトリ名が `todo-app` 以外の場合は `vite.config.ts` の `base` を合わせてください。
-> private のまま公開したい場合は Cloudflare Pages / Netlify でも可。
+自分専用のインスタンスを作るために、まずこのリポジトリをフォークします。
+
+1. GitHub 右上の **Fork** ボタンをクリック。
+2. リポジトリ名を決める（`todo-app` のままでOK）。
+3. **「Copy the `main` branch only」** にチェックが入った状態でフォーク作成。
+
+### 2. リポジトリ名を変えた場合の設定変更
+
+フォーク後にリポジトリ名を `todo-app` 以外にした場合は `vite.config.ts` の `base` を修正してください。
+
+```ts
+// vite.config.ts
+base: command === "build" ? "/<リポジトリ名>/" : "/",
+```
+
+### 3. GitHub Pages を有効化する
+
+フォークしたリポジトリで以下を設定します。
+
+1. リポジトリの **Settings** タブを開く。
+2. 左メニュー **Pages** をクリック。
+3. **Source** を `GitHub Actions` に変更して保存。
+
+> GitHub Free プランでも **public リポジトリ**なら無料で利用できます。  
+> ソースコードに秘密情報は含まれないため public で問題ありません（PAT はブラウザの localStorage にのみ保存されます）。
+
+### 4. 初回デプロイ
+
+Settings → Pages を保存した後、`main` ブランチに何か push するだけで自動デプロイが走ります。
+
+```bash
+# 例: README を一行変えて push するだけでOK
+git commit --allow-empty -m "trigger first deploy"
+git push origin main
+```
+
+進捗は **Actions** タブ → `Deploy to GitHub Pages` ワークフローで確認できます。  
+通常 1〜2 分で完了します。
+
+### 5. 公開 URL にアクセスする
+
+デプロイ完了後、以下の URL でアクセスできます。
+
+```
+https://<GitHubユーザー名>.github.io/<リポジトリ名>/
+```
+
+Actions タブのワークフロー実行結果にも URL が表示されます。
+
+### 6. スマホのホーム画面に追加（PWA）
+
+このアプリは PWA に対応しており、ネイティブアプリのように使えます。
+
+**iOS（Safari）**
+1. Safari で公開URLを開く。
+2. 下部の共有ボタン（四角に矢印）をタップ。
+3. **「ホーム画面に追加」** を選択。
+
+**Android（Chrome）**
+1. Chrome で公開URLを開く。
+2. アドレスバー右の **「…」→「ホーム画面に追加」** をタップ。  
+   または画面下部に表示されるインストールバナーをタップ。
+
+### 7. 日常的な運用フロー
+
+| やること | 方法 |
+|---|---|
+| アプリを使う | `https://<user>.github.io/<repo>/` をブックマーク or PWA で起動 |
+| データをスマホ↔PC同期 | 設定画面で `todo-data` の PAT/owner/repo を入力（[GitHub同期の設定](#github同期の設定スマホpc同期) 参照） |
+| アプリ自体を更新 | `main` に push するだけ（GitHub Actions が自動でビルド＆再デプロイ） |
+| デプロイ状況を確認 | リポジトリの Actions タブ |
+| デプロイを手動で再実行 | Actions タブ → ワークフロー選択 → **Run workflow** |
+
+> Cloudflare Pages / Netlify でも同様に動作します（`vite.config.ts` の `base` は `/` に戻してください）。
 
 ## Claude 連携（GitHub MCP）
 
