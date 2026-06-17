@@ -44,37 +44,45 @@ export default function App() {
     };
   }, [store]);
 
-  async function run(
-    fn: () => Promise<{ todos?: Todo[]; categories?: Category[] }>
-  ) {
+  // 楽観更新: state を即座に反映し、裏で同期Promiseを待つ。
+  // 失敗したら alert を出して reloadKey を進め、Store ごと作り直して再ロード。
+  function apply(m: {
+    todos?: Todo[];
+    categories?: Category[];
+    sync: Promise<void>;
+  }) {
+    if (m.todos) setTodos(m.todos);
+    if (m.categories) setCategories(m.categories);
     setSyncing(true);
+    m.sync.then(
+      () => setSyncing(false),
+      (e) => {
+        setSyncing(false);
+        alert(e instanceof Error ? e.message : "保存に失敗しました");
+        setReloadKey((k) => k + 1);
+      }
+    );
+  }
+
+  // 同期的エラー（バリデーション失敗など）をユーザーに見せる薄いラッパー
+  function safe(fn: () => void) {
     try {
-      const res = await fn();
-      if (res.todos) setTodos(res.todos);
-      if (res.categories) setCategories(res.categories);
+      fn();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "保存に失敗しました");
-      // Store ごと作り直して内部の sha キャッシュをリセット。
-      // useEffect が新 Store で load() を実行し、新鮮な sha を取り直す。
-      setReloadKey((k) => k + 1);
-    } finally {
-      setSyncing(false);
+      alert(e instanceof Error ? e.message : "操作に失敗しました");
     }
   }
 
   const actions: BoardActions = {
-    addTodo: (input) => run(async () => ({ todos: await store.addTodo(input) })),
-    updateTodo: (id, patch) =>
-      run(async () => ({ todos: await store.updateTodo(id, patch) })),
-    deleteTodo: (id) =>
-      run(async () => ({ todos: await store.deleteTodo(id) })),
+    addTodo: (input) => safe(() => apply(store.addTodo(input))),
+    updateTodo: (id, patch) => safe(() => apply(store.updateTodo(id, patch))),
+    deleteTodo: (id) => safe(() => apply(store.deleteTodo(id))),
     setTodoStatus: (id, status) =>
-      run(async () => ({ todos: await store.setTodoStatus(id, status) })),
-    addCategory: (input) =>
-      run(async () => ({ categories: await store.addCategory(input) })),
+      safe(() => apply(store.setTodoStatus(id, status))),
+    addCategory: (input) => safe(() => apply(store.addCategory(input))),
     updateCategory: (id, patch) =>
-      run(async () => ({ categories: await store.updateCategory(id, patch) })),
-    deleteCategory: (id) => run(async () => await store.deleteCategory(id)),
+      safe(() => apply(store.updateCategory(id, patch))),
+    deleteCategory: (id) => safe(() => apply(store.deleteCategory(id))),
   };
 
   function handleSaveConfig(cfg: AppConfig) {

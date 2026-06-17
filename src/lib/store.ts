@@ -12,7 +12,9 @@ import * as gh from "./githubApi";
 // Todo/カテゴリの読み書きを担うストア。
 // github モード: GitHub Contents API（data/*.json）
 // local モード:  localStorage（PAT未設定時のフォールバック）
-// 書き込みは楽観更新 + 409(sha不一致)時の再取得・再適用リトライで端末間競合に対応。
+//
+// 公開メソッドは「即座に楽観更新後の state」と「裏で走る同期 Promise」を同時に返す。
+// 呼び出し側（App.tsx）は state を即UIに反映し、Promise の失敗時のみ alert + 再ロード。
 
 const TODOS_PATH = "data/todos.json";
 const CATEGORIES_PATH = "data/categories.json";
@@ -33,6 +35,20 @@ const DEFAULT_CATEGORIES: Category[] = [
 export interface LoadResult {
   todos: Todo[];
   categories: Category[];
+}
+
+export interface TodoMutation {
+  todos: Todo[];
+  sync: Promise<void>;
+}
+export interface CategoryMutation {
+  categories: Category[];
+  sync: Promise<void>;
+}
+export interface MixedMutation {
+  todos: Todo[];
+  categories: Category[];
+  sync: Promise<void>;
 }
 
 function now(): string {
@@ -70,6 +86,9 @@ function descendantIds(categories: Category[], id: string): Set<string> {
   return set;
 }
 
+const RETRY_BACKOFF = [200, 500, 1200];
+const MAX_ATTEMPTS = 4;
+
 export class Store {
   readonly mode: StorageMode;
   private cfg: AppConfig;
@@ -103,143 +122,125 @@ export class Store {
     return { todos: this.todos, categories: this.categories };
   }
 
-  // --- 汎用の永続化（楽観更新 + 409リトライ） ---
+  // --- 共通: 楽観更新 + 同期Promise（GitHubモードは409再試行付き） ---
 
-  private async putWithRetry<T>(
-    path: string,
-    transform: (data: T[]) => T[],
-    initial: T[],
-    initialSha: string | null,
-    message: string,
-    fallback: T[]
-  ): Promise<{ data: T[]; sha: string }> {
-    // 1回目: メモリ上のSHAで楽観的にPUT
-    let data = transform(initial);
-    let sha: string | null = initialSha;
-    let lastError: unknown = null;
-
-    // 最大4回（初回 + リトライ3回）。eventual consistency 吸収のため指数バックオフ
-    const MAX_ATTEMPTS = 4;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      try {
-        const newSha = await gh.putFile(this.cfg, path, data, sha, message);
-        return { data, sha: newSha };
-      } catch (e) {
-        lastError = e;
-        if (!(e instanceof gh.GitHubError) || e.status !== 409) throw e;
-        if (attempt === MAX_ATTEMPTS - 1) break;
-
-        // バックオフ: 200ms, 500ms, 1200ms
-        const delay = [200, 500, 1200][attempt] ?? 1200;
-        await new Promise((r) => setTimeout(r, delay));
-
-        // 最新を再GETして transform を再適用
-        try {
-          const fresh = await gh.getFile<T[]>(this.cfg, path);
-          data = transform(fresh.data);
-          sha = fresh.sha;
-        } catch (getErr) {
-          lastError = getErr;
-          // 再GETが失敗したらそのまま次回試行（ネットワーク一時失敗のケース）
-        }
-      }
-    }
-    // 全て失敗した場合は、呼び出し側のメモリ状態を巻き戻すために fallback を残す
-    this.todos = fallback as unknown as Todo[];
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("更新に失敗しました");
-  }
-
-  private async mutateTodos(
+  private commitTodos(
     transform: (todos: Todo[]) => Todo[],
     message: string
-  ): Promise<Todo[]> {
+  ): TodoMutation {
     const prev = this.todos;
     const next = transform(prev);
     this.todos = next;
+
     if (this.mode === "local") {
       writeLS(LS_TODOS, next);
-      return next;
+      return { todos: next, sync: Promise.resolve() };
     }
-    try {
-      const res = await this.putWithRetry<Todo>(
-        TODOS_PATH,
-        transform,
-        prev,
-        this.todosSha,
-        message,
-        prev
-      );
-      this.todos = res.data;
-      this.todosSha = res.sha;
-      return res.data;
-    } catch (e) {
-      this.todos = prev; // 失敗時はメモリ上のstateを巻き戻す
-      throw e;
-    }
+
+    const initialSha = this.todosSha;
+    const cfg = this.cfg;
+    const sync = (async () => {
+      let data = next;
+      let sha: string | null = initialSha;
+      let lastError: unknown = null;
+
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        try {
+          const newSha = await gh.putFile(cfg, TODOS_PATH, data, sha, message);
+          this.todos = data;
+          this.todosSha = newSha;
+          return;
+        } catch (e) {
+          lastError = e;
+          if (!(e instanceof gh.GitHubError) || e.status !== 409) {
+            this.todos = prev;
+            throw e;
+          }
+          if (attempt === MAX_ATTEMPTS - 1) break;
+          await new Promise((r) =>
+            setTimeout(r, RETRY_BACKOFF[attempt] ?? 1200)
+          );
+          try {
+            const fresh = await gh.getFile<Todo[]>(cfg, TODOS_PATH);
+            data = transform(fresh.data);
+            sha = fresh.sha;
+          } catch (getErr) {
+            lastError = getErr;
+          }
+        }
+      }
+      this.todos = prev;
+      throw lastError instanceof Error
+        ? lastError
+        : new Error("更新に失敗しました");
+    })();
+
+    return { todos: next, sync };
   }
 
-  private async mutateCategories(
-    transform: (categories: Category[]) => Category[],
+  private commitCategories(
+    transform: (cats: Category[]) => Category[],
     message: string
-  ): Promise<Category[]> {
+  ): CategoryMutation {
     const prev = this.categories;
     const next = transform(prev);
     this.categories = next;
+
     if (this.mode === "local") {
       writeLS(LS_CATEGORIES, next);
-      return next;
+      return { categories: next, sync: Promise.resolve() };
     }
 
-    let data = next;
-    let sha: string | null = this.catsSha;
-    let lastError: unknown = null;
-    const MAX_ATTEMPTS = 4;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      try {
-        const newSha = await gh.putFile(
-          this.cfg,
-          CATEGORIES_PATH,
-          data,
-          sha,
-          message
-        );
-        this.categories = data;
-        this.catsSha = newSha;
-        return data;
-      } catch (e) {
-        lastError = e;
-        if (!(e instanceof gh.GitHubError) || e.status !== 409) {
-          this.categories = prev;
-          throw e;
-        }
-        if (attempt === MAX_ATTEMPTS - 1) break;
+    const initialSha = this.catsSha;
+    const cfg = this.cfg;
+    const sync = (async () => {
+      let data = next;
+      let sha: string | null = initialSha;
+      let lastError: unknown = null;
 
-        const delay = [200, 500, 1200][attempt] ?? 1200;
-        await new Promise((r) => setTimeout(r, delay));
-
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         try {
-          const fresh = await gh.getFile<Category[]>(
-            this.cfg,
-            CATEGORIES_PATH
+          const newSha = await gh.putFile(
+            cfg,
+            CATEGORIES_PATH,
+            data,
+            sha,
+            message
           );
-          data = transform(fresh.data);
-          sha = fresh.sha;
-        } catch (getErr) {
-          lastError = getErr;
+          this.categories = data;
+          this.catsSha = newSha;
+          return;
+        } catch (e) {
+          lastError = e;
+          if (!(e instanceof gh.GitHubError) || e.status !== 409) {
+            this.categories = prev;
+            throw e;
+          }
+          if (attempt === MAX_ATTEMPTS - 1) break;
+          await new Promise((r) =>
+            setTimeout(r, RETRY_BACKOFF[attempt] ?? 1200)
+          );
+          try {
+            const fresh = await gh.getFile<Category[]>(cfg, CATEGORIES_PATH);
+            data = transform(fresh.data);
+            sha = fresh.sha;
+          } catch (getErr) {
+            lastError = getErr;
+          }
         }
       }
-    }
-    this.categories = prev;
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("更新に失敗しました");
+      this.categories = prev;
+      throw lastError instanceof Error
+        ? lastError
+        : new Error("更新に失敗しました");
+    })();
+
+    return { categories: next, sync };
   }
 
-  // --- Todo 操作 ---
+  // --- Todo 操作（即座に楽観更新後の todos を返す） ---
 
-  addTodo(input: TodoInput): Promise<Todo[]> {
+  addTodo(input: TodoInput): TodoMutation {
     const title = input.title.trim();
     const todo: Todo = {
       id: newId(),
@@ -253,12 +254,15 @@ export class Store {
       updatedAt: now(),
       tags: input.tags ?? [],
     };
-    return this.mutateTodos((todos) => [...todos, todo], `Add todo: ${title}`);
+    return this.commitTodos(
+      (todos) => [...todos, todo],
+      `Add todo: ${title}`
+    );
   }
 
-  updateTodo(id: string, patch: Partial<TodoInput>): Promise<Todo[]> {
+  updateTodo(id: string, patch: Partial<TodoInput>): TodoMutation {
     const ts = now();
-    return this.mutateTodos(
+    return this.commitTodos(
       (todos) =>
         todos.map((t) =>
           t.id === id
@@ -285,17 +289,17 @@ export class Store {
     );
   }
 
-  setTodoStatus(id: string, status: Status): Promise<Todo[]> {
+  setTodoStatus(id: string, status: Status): TodoMutation {
     const ts = now();
-    return this.mutateTodos(
+    return this.commitTodos(
       (todos) =>
         todos.map((t) => (t.id === id ? { ...t, status, updatedAt: ts } : t)),
       `Set todo status: ${status}`
     );
   }
 
-  deleteTodo(id: string): Promise<Todo[]> {
-    return this.mutateTodos(
+  deleteTodo(id: string): TodoMutation {
+    return this.commitTodos(
       (todos) => todos.filter((t) => t.id !== id),
       `Delete todo`
     );
@@ -303,11 +307,11 @@ export class Store {
 
   // --- カテゴリ操作 ---
 
-  addCategory(input: CategoryInput): Promise<Category[]> {
+  addCategory(input: CategoryInput): CategoryMutation {
     const name = input.name.trim();
     const parentId = input.parentId ?? null;
     const color = input.color ?? "#6B7280";
-    return this.mutateCategories((cats) => {
+    return this.commitCategories((cats) => {
       const siblings = cats.filter((c) => c.parentId === parentId);
       const maxOrder = siblings.reduce((m, c) => Math.max(m, c.order), -1);
       const cat: Category = {
@@ -321,8 +325,11 @@ export class Store {
     }, `Add category: ${name}`);
   }
 
-  updateCategory(id: string, patch: Partial<CategoryInput>): Promise<Category[]> {
-    return this.mutateCategories((cats) => {
+  updateCategory(
+    id: string,
+    patch: Partial<CategoryInput>
+  ): CategoryMutation {
+    return this.commitCategories((cats) => {
       if (patch.parentId) {
         const desc = descendantIds(cats, id);
         if (patch.parentId === id || desc.has(patch.parentId)) {
@@ -344,24 +351,29 @@ export class Store {
   }
 
   // 削除: 子カテゴリは親へ繰り上げ、所属Todoは未分類へ
-  async deleteCategory(id: string): Promise<LoadResult> {
+  deleteCategory(id: string): MixedMutation {
     const target = this.categories.find((c) => c.id === id);
     const parentId = target?.parentId ?? null;
-    const categories = await this.mutateCategories(
+    const ts = now();
+
+    const catRes = this.commitCategories(
       (cats) =>
         cats
           .filter((c) => c.id !== id)
           .map((c) => (c.parentId === id ? { ...c, parentId } : c)),
       `Delete category`
     );
-    const ts = now();
-    const todos = await this.mutateTodos(
+    const todoRes = this.commitTodos(
       (tds) =>
         tds.map((t) =>
           t.categoryId === id ? { ...t, categoryId: null, updatedAt: ts } : t
         ),
       `Unassign todos from deleted category`
     );
-    return { todos, categories };
+    return {
+      todos: todoRes.todos,
+      categories: catRes.categories,
+      sync: Promise.all([catRes.sync, todoRes.sync]).then(() => undefined),
+    };
   }
 }
