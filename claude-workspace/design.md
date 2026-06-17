@@ -19,11 +19,11 @@
 
 ## ストレージ二系統
 - 未設定 → localStorage（その端末のみ・初回シードで仕事/プライベート）
-- PAT等設定済み → GitHub `rooki-todos/data/*.json`（全端末同期）
+- PAT等設定済み → GitHub `todo-data/data/*.json`（全端末同期）
 
 ## セキュリティ
 - サーバーが無いため PAT はブラウザ localStorage 保存。
-- 緩和：fine-grained PAT を `rooki-todos` 限定・Contents権限のみに。漏洩時の影響を局所化。
+- 緩和：fine-grained PAT を `todo-data` 限定・Contents権限のみに。漏洩時の影響を局所化。
 - 公開Pagesは静的HTMLのみ（トークンはソース/ページに出ない）。
 
 ## 検証済み（ブラウザE2E・localモード）
@@ -38,7 +38,7 @@
 - `React.FormEvent`/`React.ReactNode` は明示 import に（UMDグローバル依存回避）。
 
 ## 残課題 / 任意
-1. `rooki-todos` をGitHubに作成しpush、PAT発行→設定画面で接続。
+1. `todo-data` をGitHubに作成しpush、PAT発行→設定画面で接続。
 2. `todo-app` をpublicでGitHub Pages有効化→スマホ確認。
 3. PNGアイコン（iOS向け apple-touch-icon 等）でPWA体験向上。
 4. オフライン編集キュー、複数端末同時編集の本格マージ（初版は409リトライのみ）。

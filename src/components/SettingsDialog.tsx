@@ -87,7 +87,7 @@ export default function SettingsDialog({
         </div>
 
         <p className="mb-4 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-          データ用リポジトリ（例: <code>rooki-todos</code>）に接続すると、スマホ・PCで同期できます。
+          データ用リポジトリ（例: <code>todo-data</code>）に接続すると、スマホ・PCで同期できます。
           トークンはこの端末のブラウザにのみ保存されます。
           <a
             href="https://github.com/settings/personal-access-tokens/new"
@@ -120,7 +120,7 @@ export default function SettingsDialog({
               <input
                 value={repo}
                 onChange={(e) => setRepo(e.target.value)}
-                placeholder="rooki-todos"
+                placeholder="todo-data"
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-800"
               />
             </div>

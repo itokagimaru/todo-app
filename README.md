@@ -16,7 +16,7 @@
   └ 静的SPA (GitHub Pages, 常時稼働) ──fetch──▶ GitHub REST API
                                                   │ contents: data/*.json
                                                   ▼
-                                        [Private Repo: rooki-todos]
+                                        [Private Repo: todo-data]
                                                   ▲
                                         [GitHub MCP] ← Claude
 ```
@@ -27,7 +27,7 @@
 | モード | 条件 | 保存先 |
 |---|---|---|
 | ローカル | 未設定 | ブラウザの localStorage（その端末のみ） |
-| GitHub同期 | 設定画面でPAT/owner/repo入力 | `rooki-todos` の `data/*.json`（全端末で同期） |
+| GitHub同期 | 設定画面でPAT/owner/repo入力 | `todo-data` の `data/*.json`（全端末で同期） |
 
 ## 技術スタック
 
@@ -44,9 +44,9 @@ npm run preview  # ビルド結果をローカル確認
 
 ## GitHub同期の設定（スマホ↔PC同期）
 
-1. GitHub で Private リポジトリ `rooki-todos` を作成し、`data/todos.json`(`[]`) と `data/categories.json` を配置（このリポジトリ群の `rooki-todos/` がテンプレート）。
+1. GitHub で Private リポジトリ `todo-data` を作成し、`data/todos.json`(`[]`) と `data/categories.json` を配置（このリポジトリ群の `todo-data/` がテンプレート）。
 2. [Fine-grained PAT](https://github.com/settings/personal-access-tokens/new) を発行:
-   - Repository access: **Only select repositories → `rooki-todos`**
+   - Repository access: **Only select repositories → `todo-data`**
    - Permissions: **Contents → Read and write** のみ
 3. アプリ右上の歯車（設定）から owner / repo / branch / PAT を入力し「接続テスト」→「保存」。
 4. ヘッダーが「GitHub同期」になれば、以後この端末の変更は GitHub に保存され、他端末と同期します。
@@ -66,7 +66,7 @@ npm run preview  # ビルド結果をローカル確認
 
 ## Claude 連携（GitHub MCP）
 
-データ用 `rooki-todos` に `.mcp.json` を用意済み。環境変数 `GITHUB_PAT` を設定して Claude Code を起動すると、`data/*.json` を直接参照・更新できます。詳細は `rooki-todos/README.md`・`rooki-todos/CLAUDE.md`。
+データ用 `todo-data` に `.mcp.json` を用意済み。環境変数 `GITHUB_PAT` を設定して Claude Code を起動すると、`data/*.json` を直接参照・更新できます。詳細は `todo-data/README.md`・`todo-data/CLAUDE.md`。
 
 ## 主なファイル
 

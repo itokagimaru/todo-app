@@ -1,5 +1,5 @@
 // Todo アプリのデータ型定義
-// rooki-todos リポジトリの data/*.json と一致させること
+// todo-data リポジトリの data/*.json と一致させること
 
 export type Priority = "high" | "medium" | "low";
 export type Status = "todo" | "in_progress" | "done";

@@ -2,7 +2,7 @@
 // サーバーが無いため、トークンはこのブラウザ内にのみ保持される。
 
 export interface AppConfig {
-  pat: string; // fine-grained PAT（rooki-todos 限定・Contents権限のみを推奨）
+  pat: string; // fine-grained PAT（todo-data 限定・Contents権限のみを推奨）
   owner: string;
   repo: string;
   branch: string;
