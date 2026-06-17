@@ -375,10 +375,10 @@ export default function TodoBoard({
       <button
         type="button"
         onClick={openAddTodo}
-        className="fixed bottom-6 right-6 z-30 flex h-20 w-20 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition-transform"
+        className="fixed bottom-6 right-6 z-30 flex h-24 w-24 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition-transform sm:h-20 sm:w-20"
         aria-label="タスクを追加"
       >
-        <PlusIcon className="h-10 w-10" />
+        <PlusIcon className="h-12 w-12 sm:h-10 sm:w-10" />
       </button>
 
       <TodoForm
