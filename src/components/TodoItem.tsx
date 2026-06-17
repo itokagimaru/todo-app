@@ -123,11 +123,11 @@ export default function TodoItem({
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+      <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity sm:gap-0.5 sm:opacity-0 sm:group-hover:opacity-100">
         <button
           type="button"
           onClick={onCycleStatus}
-          className="rounded px-1.5 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+          className="rounded px-2 py-1.5 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200 sm:px-1.5 sm:py-1 sm:text-xs"
           title="ステータス切替 (未着手→進行中→完了)"
         >
           状態
@@ -135,18 +135,18 @@ export default function TodoItem({
         <button
           type="button"
           onClick={onEdit}
-          className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+          className="rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200 sm:p-1.5"
           aria-label="編集"
         >
-          <EditIcon className="h-4 w-4" />
+          <EditIcon className="h-5 w-5 sm:h-4 sm:w-4" />
         </button>
         <button
           type="button"
           onClick={onDelete}
-          className="rounded p-1.5 text-gray-500 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/20"
+          className="rounded p-2 text-gray-500 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/20 sm:p-1.5"
           aria-label="削除"
         >
-          <TrashIcon className="h-4 w-4" />
+          <TrashIcon className="h-5 w-5 sm:h-4 sm:w-4" />
         </button>
       </div>
     </li>
