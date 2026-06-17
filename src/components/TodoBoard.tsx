@@ -16,7 +16,7 @@ import CategoryTree, { type Selection } from "./CategoryTree";
 import TodoItem from "./TodoItem";
 import TodoForm from "./TodoForm";
 import CategoryForm from "./CategoryForm";
-import { PlusIcon, ListIcon, SettingsIcon } from "./icons";
+import { PlusIcon, ListIcon, SettingsIcon, RefreshIcon } from "./icons";
 
 export interface BoardActions {
   addTodo: (input: TodoInput) => void;
@@ -35,6 +35,7 @@ interface Props {
   syncing: boolean;
   actions: BoardActions;
   onOpenSettings: () => void;
+  onRefresh: () => void;
 }
 
 const PRIORITY_RANK: Record<Todo["priority"], number> = {
@@ -50,6 +51,7 @@ export default function TodoBoard({
   syncing,
   actions,
   onOpenSettings,
+  onRefresh,
 }: Props) {
   const [selection, setSelection] = useState<Selection>({ kind: "all" });
   const [statusFilter, setStatusFilter] = useState<"all" | Status>("all");
@@ -258,6 +260,16 @@ export default function TodoBoard({
         </button>
         <button
           type="button"
+          onClick={onRefresh}
+          disabled={syncing}
+          className="rounded-md p-2 text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800"
+          aria-label="更新"
+          title="サーバから最新のタスクを再取得"
+        >
+          <RefreshIcon className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
           onClick={onOpenSettings}
           className="rounded-md p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
           aria-label="設定"
@@ -363,10 +375,10 @@ export default function TodoBoard({
       <button
         type="button"
         onClick={openAddTodo}
-        className="fixed bottom-6 right-6 z-30 flex h-16 w-16 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition-transform"
+        className="fixed bottom-6 right-6 z-30 flex h-20 w-20 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition-transform"
         aria-label="タスクを追加"
       >
-        <PlusIcon className="h-8 w-8" />
+        <PlusIcon className="h-10 w-10" />
       </button>
 
       <TodoForm

@@ -118,6 +118,7 @@ export default function App() {
           syncing={syncing}
           actions={actions}
           onOpenSettings={() => setSettingsOpen(true)}
+          onRefresh={() => setReloadKey((k) => k + 1)}
         />
       )}
 
