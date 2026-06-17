@@ -105,39 +105,77 @@ export class Store {
 
   // --- 汎用の永続化（楽観更新 + 409リトライ） ---
 
+  private async putWithRetry<T>(
+    path: string,
+    transform: (data: T[]) => T[],
+    initial: T[],
+    initialSha: string | null,
+    message: string,
+    fallback: T[]
+  ): Promise<{ data: T[]; sha: string }> {
+    // 1回目: メモリ上のSHAで楽観的にPUT
+    let data = transform(initial);
+    let sha: string | null = initialSha;
+    let lastError: unknown = null;
+
+    // 最大4回（初回 + リトライ3回）。eventual consistency 吸収のため指数バックオフ
+    const MAX_ATTEMPTS = 4;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      try {
+        const newSha = await gh.putFile(this.cfg, path, data, sha, message);
+        return { data, sha: newSha };
+      } catch (e) {
+        lastError = e;
+        if (!(e instanceof gh.GitHubError) || e.status !== 409) throw e;
+        if (attempt === MAX_ATTEMPTS - 1) break;
+
+        // バックオフ: 200ms, 500ms, 1200ms
+        const delay = [200, 500, 1200][attempt] ?? 1200;
+        await new Promise((r) => setTimeout(r, delay));
+
+        // 最新を再GETして transform を再適用
+        try {
+          const fresh = await gh.getFile<T[]>(this.cfg, path);
+          data = transform(fresh.data);
+          sha = fresh.sha;
+        } catch (getErr) {
+          lastError = getErr;
+          // 再GETが失敗したらそのまま次回試行（ネットワーク一時失敗のケース）
+        }
+      }
+    }
+    // 全て失敗した場合は、呼び出し側のメモリ状態を巻き戻すために fallback を残す
+    this.todos = fallback as unknown as Todo[];
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("更新に失敗しました");
+  }
+
   private async mutateTodos(
     transform: (todos: Todo[]) => Todo[],
     message: string
   ): Promise<Todo[]> {
-    const next = transform(this.todos);
+    const prev = this.todos;
+    const next = transform(prev);
     this.todos = next;
     if (this.mode === "local") {
       writeLS(LS_TODOS, next);
       return next;
     }
     try {
-      this.todosSha = await gh.putFile(
-        this.cfg,
+      const res = await this.putWithRetry<Todo>(
         TODOS_PATH,
-        next,
+        transform,
+        prev,
         this.todosSha,
-        message
+        message,
+        prev
       );
-      return next;
+      this.todos = res.data;
+      this.todosSha = res.sha;
+      return res.data;
     } catch (e) {
-      if (e instanceof gh.GitHubError && e.status === 409) {
-        const fresh = await gh.getFile<Todo[]>(this.cfg, TODOS_PATH);
-        const reapplied = transform(fresh.data);
-        this.todos = reapplied;
-        this.todosSha = await gh.putFile(
-          this.cfg,
-          TODOS_PATH,
-          reapplied,
-          fresh.sha,
-          message
-        );
-        return reapplied;
-      }
+      this.todos = prev; // 失敗時はメモリ上のstateを巻き戻す
       throw e;
     }
   }
@@ -146,37 +184,57 @@ export class Store {
     transform: (categories: Category[]) => Category[],
     message: string
   ): Promise<Category[]> {
-    const next = transform(this.categories);
+    const prev = this.categories;
+    const next = transform(prev);
     this.categories = next;
     if (this.mode === "local") {
       writeLS(LS_CATEGORIES, next);
       return next;
     }
-    try {
-      this.catsSha = await gh.putFile(
-        this.cfg,
-        CATEGORIES_PATH,
-        next,
-        this.catsSha,
-        message
-      );
-      return next;
-    } catch (e) {
-      if (e instanceof gh.GitHubError && e.status === 409) {
-        const fresh = await gh.getFile<Category[]>(this.cfg, CATEGORIES_PATH);
-        const reapplied = transform(fresh.data);
-        this.categories = reapplied;
-        this.catsSha = await gh.putFile(
+
+    let data = next;
+    let sha: string | null = this.catsSha;
+    let lastError: unknown = null;
+    const MAX_ATTEMPTS = 4;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      try {
+        const newSha = await gh.putFile(
           this.cfg,
           CATEGORIES_PATH,
-          reapplied,
-          fresh.sha,
+          data,
+          sha,
           message
         );
-        return reapplied;
+        this.categories = data;
+        this.catsSha = newSha;
+        return data;
+      } catch (e) {
+        lastError = e;
+        if (!(e instanceof gh.GitHubError) || e.status !== 409) {
+          this.categories = prev;
+          throw e;
+        }
+        if (attempt === MAX_ATTEMPTS - 1) break;
+
+        const delay = [200, 500, 1200][attempt] ?? 1200;
+        await new Promise((r) => setTimeout(r, delay));
+
+        try {
+          const fresh = await gh.getFile<Category[]>(
+            this.cfg,
+            CATEGORIES_PATH
+          );
+          data = transform(fresh.data);
+          sha = fresh.sha;
+        } catch (getErr) {
+          lastError = getErr;
+        }
       }
-      throw e;
     }
+    this.categories = prev;
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("更新に失敗しました");
   }
 
   // --- Todo 操作 ---
