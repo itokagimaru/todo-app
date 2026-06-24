@@ -179,13 +179,15 @@ export default function TodoBoard({
     const walk = (nodes: TodoNode[], depth: number) => {
       nodes.forEach((node, i) => {
         const info = childInfo.get(node.id) ?? { total: 0, done: 0 };
+        // ↑↓ はサブタスク（親持ち）でのみ有効。ルート Todo は自動ソート
+        const reorderable = node.parentId !== null;
         rows.push({
           todo: node,
           depth,
           doneChildren: info.done,
           totalChildren: info.total,
-          canMoveUp: i > 0,
-          canMoveDown: i < nodes.length - 1,
+          canMoveUp: reorderable && i > 0,
+          canMoveDown: reorderable && i < nodes.length - 1,
         });
         walk(node.children, depth + 1);
       });

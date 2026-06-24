@@ -61,9 +61,23 @@ export interface TodoInput {
   recurrence?: Recurrence | null;
 }
 
-// 同階層内の比較関数（order昇順、同値はcreatedAt昇順）
+// 同階層内の比較関数。
+// - 親 Todo がある（サブタスク）: 手動 order を尊重し、同値は createdAt
+// - 最上位 (parentId === null): 従来の自動ソート（完了は末尾 → 優先度 → 期限 → 作成日）
 function compareTodoSiblings(a: Todo, b: Todo): number {
-  if (a.order !== b.order) return a.order - b.order;
+  if (a.parentId !== null) {
+    if (a.order !== b.order) return a.order - b.order;
+    return a.createdAt.localeCompare(b.createdAt);
+  }
+  const aDone = a.status === "done" ? 1 : 0;
+  const bDone = b.status === "done" ? 1 : 0;
+  if (aDone !== bDone) return aDone - bDone;
+  const rank: Record<Priority, number> = { high: 0, medium: 1, low: 2 };
+  if (rank[a.priority] !== rank[b.priority])
+    return rank[a.priority] - rank[b.priority];
+  if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+  if (a.dueDate) return -1;
+  if (b.dueDate) return 1;
   return a.createdAt.localeCompare(b.createdAt);
 }
 

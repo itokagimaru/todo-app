@@ -205,24 +205,28 @@ export default function TodoItem({
       </div>
 
       <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity sm:gap-0.5 sm:opacity-0 sm:group-hover:opacity-100">
-        <button
-          type="button"
-          onClick={onMoveUp}
-          disabled={!canMoveUp}
-          className="rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-gray-800 dark:hover:text-gray-200 sm:p-1.5"
-          aria-label="一つ上に移動"
-        >
-          <ArrowUpIcon className="h-5 w-5 sm:h-4 sm:w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onMoveDown}
-          disabled={!canMoveDown}
-          className="rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-gray-800 dark:hover:text-gray-200 sm:p-1.5"
-          aria-label="一つ下に移動"
-        >
-          <ArrowDownIcon className="h-5 w-5 sm:h-4 sm:w-4" />
-        </button>
+        {(canMoveUp || canMoveDown) && (
+          <>
+            <button
+              type="button"
+              onClick={onMoveUp}
+              disabled={!canMoveUp}
+              className="rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-gray-800 dark:hover:text-gray-200 sm:p-1.5"
+              aria-label="一つ上に移動"
+            >
+              <ArrowUpIcon className="h-5 w-5 sm:h-4 sm:w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onMoveDown}
+              disabled={!canMoveDown}
+              className="rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-gray-800 dark:hover:text-gray-200 sm:p-1.5"
+              aria-label="一つ下に移動"
+            >
+              <ArrowDownIcon className="h-5 w-5 sm:h-4 sm:w-4" />
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={onCycleStatus}
