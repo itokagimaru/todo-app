@@ -82,6 +82,8 @@ export default function App() {
     deleteTodo: (id) => safe(() => apply(store.deleteTodo(id))),
     setTodoStatus: (id, status) =>
       safe(() => apply(store.setTodoStatus(id, status))),
+    moveTodo: (id, direction) =>
+      safe(() => apply(store.moveTodo(id, direction))),
     addCategory: (input) => safe(() => apply(store.addCategory(input))),
     updateCategory: (id, patch) =>
       safe(() => apply(store.updateCategory(id, patch))),

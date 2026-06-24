@@ -147,13 +147,40 @@ export function applyRollover(todos: Todo[], today: Date): Todo[] {
   return changed ? next : todos;
 }
 
-// 既存 JSON に recurrence/startDate キーが無いケースの後方互換
+// 既存 JSON に recurrence/startDate/parentId/order キーが無いケースの後方互換
 function normalizeTodos(todos: Todo[]): Todo[] {
   return todos.map((t) => ({
     ...t,
     recurrence: t.recurrence ?? null,
     startDate: t.startDate ?? null,
+    parentId: t.parentId ?? null,
+    order: typeof t.order === "number" ? t.order : 0,
   }));
+}
+
+// 親 parentId の兄弟内で最大 order を返す。空なら -1。
+function maxSiblingOrder(todos: Todo[], parentId: string | null): number {
+  let max = -1;
+  for (const t of todos) {
+    if (t.parentId === parentId && t.order > max) max = t.order;
+  }
+  return max;
+}
+
+// 指定 Todo の全子孫 id を返す（循環防止用）
+function todoDescendantIds(todos: Todo[], id: string): Set<string> {
+  const result = new Set<string>([id]);
+  const stack = [id];
+  while (stack.length) {
+    const cur = stack.pop()!;
+    for (const t of todos) {
+      if (t.parentId === cur && !result.has(t.id)) {
+        result.add(t.id);
+        stack.push(t.id);
+      }
+    }
+  }
+  return result;
 }
 
 // daysOfWeek を 0〜6 の範囲内に揃え、重複を除いてソート。空配列は null 扱いに。
@@ -330,11 +357,15 @@ export class Store {
 
   addTodo(input: TodoInput): TodoMutation {
     const title = input.title.trim();
+    const parentId = input.parentId ?? null;
+    const order = maxSiblingOrder(this.todos, parentId) + 1;
     const todo: Todo = {
       id: newId(),
       title,
       description: input.description?.trim() ?? "",
       categoryId: input.categoryId ?? null,
+      parentId,
+      order,
       priority: input.priority ?? "medium",
       status: input.status ?? "todo",
       startDate: input.startDate || null,
@@ -352,39 +383,60 @@ export class Store {
 
   updateTodo(id: string, patch: Partial<TodoInput>): TodoMutation {
     const ts = now();
-    return this.commitTodos(
-      (todos) =>
-        todos.map((t) =>
-          t.id === id
-            ? {
-                ...t,
-                title: patch.title?.trim() ?? t.title,
-                description: patch.description?.trim() ?? t.description,
-                categoryId:
-                  patch.categoryId !== undefined
-                    ? patch.categoryId
-                    : t.categoryId,
-                priority: patch.priority ?? t.priority,
-                status: patch.status ?? t.status,
-                startDate:
-                  patch.startDate !== undefined
-                    ? patch.startDate || null
-                    : t.startDate,
-                dueDate:
-                  patch.dueDate !== undefined
-                    ? patch.dueDate || null
-                    : t.dueDate,
-                tags: patch.tags ?? t.tags,
-                recurrence:
-                  patch.recurrence !== undefined
-                    ? normalizeRecurrence(patch.recurrence)
-                    : t.recurrence,
-                updatedAt: ts,
-              }
-            : t
-        ),
-      `Update todo`
-    );
+    return this.commitTodos((todos) => {
+      // 親の付け替えがある場合は循環チェック + 新親兄弟末尾に order を振り直す
+      let newParentId: string | null | undefined;
+      let newOrder: number | undefined;
+      if (patch.parentId !== undefined) {
+        const candidate = patch.parentId;
+        if (candidate === id) {
+          throw new Error("自分自身を親に指定できません");
+        }
+        if (candidate) {
+          const desc = todoDescendantIds(todos, id);
+          if (desc.has(candidate)) {
+            throw new Error("自分の子孫を親に指定できません");
+          }
+        }
+        const current = todos.find((t) => t.id === id);
+        if (current && current.parentId !== candidate) {
+          newParentId = candidate;
+          newOrder = maxSiblingOrder(todos, candidate) + 1;
+        }
+      }
+      return todos.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              title: patch.title?.trim() ?? t.title,
+              description: patch.description?.trim() ?? t.description,
+              categoryId:
+                patch.categoryId !== undefined
+                  ? patch.categoryId
+                  : t.categoryId,
+              parentId:
+                newParentId !== undefined ? newParentId : t.parentId,
+              order: newOrder !== undefined ? newOrder : t.order,
+              priority: patch.priority ?? t.priority,
+              status: patch.status ?? t.status,
+              startDate:
+                patch.startDate !== undefined
+                  ? patch.startDate || null
+                  : t.startDate,
+              dueDate:
+                patch.dueDate !== undefined
+                  ? patch.dueDate || null
+                  : t.dueDate,
+              tags: patch.tags ?? t.tags,
+              recurrence:
+                patch.recurrence !== undefined
+                  ? normalizeRecurrence(patch.recurrence)
+                  : t.recurrence,
+              updatedAt: ts,
+            }
+          : t
+      );
+    }, `Update todo`);
   }
 
   setTodoStatus(id: string, status: Status): TodoMutation {
@@ -397,10 +449,54 @@ export class Store {
   }
 
   deleteTodo(id: string): TodoMutation {
-    return this.commitTodos(
-      (todos) => todos.filter((t) => t.id !== id),
-      `Delete todo`
-    );
+    const target = this.todos.find((t) => t.id === id);
+    const newParentId = target?.parentId ?? null;
+    const ts = now();
+    return this.commitTodos((todos) => {
+      // 削除Todoの子は同じ親へ繰り上げ。order は新親の末尾に追加
+      let nextOrder = maxSiblingOrder(todos, newParentId) + 1;
+      return todos
+        .filter((t) => t.id !== id)
+        .map((t) => {
+          if (t.parentId === id) {
+            return {
+              ...t,
+              parentId: newParentId,
+              order: nextOrder++,
+              updatedAt: ts,
+            };
+          }
+          return t;
+        });
+    }, `Delete todo`);
+  }
+
+  // 兄弟内で並び順を一つ動かす。境界では何もしない。
+  moveTodo(id: string, direction: "up" | "down"): TodoMutation {
+    const ts = now();
+    return this.commitTodos((todos) => {
+      const cur = todos.find((t) => t.id === id);
+      if (!cur) return todos;
+      const siblings = todos
+        .filter((t) => t.parentId === cur.parentId)
+        .sort((a, b) => {
+          if (a.order !== b.order) return a.order - b.order;
+          return a.createdAt.localeCompare(b.createdAt);
+        });
+      const idx = siblings.findIndex((t) => t.id === id);
+      if (direction === "up" && idx <= 0) return todos;
+      if (direction === "down" && idx >= siblings.length - 1) return todos;
+      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+      const newOrder = [...siblings];
+      [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+      // 兄弟全員に 0..N-1 を振り直す（同 order の衝突を解消）
+      const idToOrder = new Map(newOrder.map((t, i) => [t.id, i]));
+      return todos.map((t) =>
+        idToOrder.has(t.id)
+          ? { ...t, order: idToOrder.get(t.id)!, updatedAt: ts }
+          : t
+      );
+    }, `Reorder todo ${direction}`);
   }
 
   // --- カテゴリ操作 ---

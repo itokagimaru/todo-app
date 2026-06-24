@@ -6,9 +6,11 @@ import type {
   TodoInput,
   CategoryInput,
   CategoryNode,
+  TodoNode,
 } from "@/lib/types";
 import {
   buildCategoryTree,
+  buildTodoTree,
   collectCategoryIds,
   STATUS_LABELS,
 } from "@/lib/types";
@@ -23,6 +25,7 @@ export interface BoardActions {
   updateTodo: (id: string, patch: TodoInput) => void;
   deleteTodo: (id: string) => void;
   setTodoStatus: (id: string, status: Status) => void;
+  moveTodo: (id: string, direction: "up" | "down") => void;
   addCategory: (input: CategoryInput) => void;
   updateCategory: (id: string, patch: CategoryInput) => void;
   deleteCategory: (id: string) => void;
@@ -38,11 +41,15 @@ interface Props {
   onRefresh: () => void;
 }
 
-const PRIORITY_RANK: Record<Todo["priority"], number> = {
-  high: 0,
-  medium: 1,
-  low: 2,
-};
+// 子孫含めた表示時のメタ情報（インデント・進捗バッジ・↑↓有効判定）
+interface FlatRow {
+  todo: Todo;
+  depth: number;
+  doneChildren: number;
+  totalChildren: number;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+}
 
 export default function TodoBoard({
   todos,
@@ -120,15 +127,15 @@ export default function TodoBoard({
     return new Set(collectCategoryIds(node));
   }, [selection, tree]);
 
-  const visibleTodos = useMemo(() => {
+  // 表示用フラット行（親子ツリーを深さ優先で展開）。
+  // フィルタにマッチした Todo に加え、ナビゲーション維持のため祖先も自動で含める。
+  const visibleRows = useMemo<FlatRow[]>(() => {
     const q = search.trim().toLowerCase();
-    const todayISO = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD (local)
-    const filtered = todos.filter((t) => {
-      // 表示範囲フィルタ: startDate と今日の比較で未開始判定
+    const todayISO = new Date().toLocaleDateString("sv-SE");
+    const matchFn = (t: Todo) => {
       const notYetStarted = t.startDate ? t.startDate > todayISO : false;
       if (scope === "active" && notYetStarted) return false;
       if (scope === "upcoming" && !notYetStarted) return false;
-
       if (selection.kind === "uncategorized" && t.categoryId) return false;
       if (
         selection.kind === "category" &&
@@ -142,20 +149,49 @@ export default function TodoBoard({
         if (!hay.includes(q)) return false;
       }
       return true;
-    });
+    };
 
-    filtered.sort((a, b) => {
-      const aDone = a.status === "done" ? 1 : 0;
-      const bDone = b.status === "done" ? 1 : 0;
-      if (aDone !== bDone) return aDone - bDone;
-      if (PRIORITY_RANK[a.priority] !== PRIORITY_RANK[b.priority])
-        return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
-      if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
-      if (a.dueDate) return -1;
-      if (b.dueDate) return 1;
-      return a.createdAt.localeCompare(b.createdAt);
-    });
-    return filtered;
+    const byId = new Map(todos.map((t) => [t.id, t]));
+    const visibleIds = new Set<string>();
+    for (const t of todos) {
+      if (matchFn(t)) {
+        visibleIds.add(t.id);
+        let cur = t.parentId;
+        while (cur && !visibleIds.has(cur)) {
+          visibleIds.add(cur);
+          cur = byId.get(cur)?.parentId ?? null;
+        }
+      }
+    }
+
+    // 子集計は全データに対して計算する（フィルタで隠れた子も進捗に含める）
+    const childInfo = new Map<string, { total: number; done: number }>();
+    for (const t of todos) {
+      if (!t.parentId) continue;
+      const info = childInfo.get(t.parentId) ?? { total: 0, done: 0 };
+      info.total++;
+      if (t.status === "done") info.done++;
+      childInfo.set(t.parentId, info);
+    }
+
+    const tree = buildTodoTree(todos.filter((t) => visibleIds.has(t.id)));
+    const rows: FlatRow[] = [];
+    const walk = (nodes: TodoNode[], depth: number) => {
+      nodes.forEach((node, i) => {
+        const info = childInfo.get(node.id) ?? { total: 0, done: 0 };
+        rows.push({
+          todo: node,
+          depth,
+          doneChildren: info.done,
+          totalChildren: info.total,
+          canMoveUp: i > 0,
+          canMoveDown: i < nodes.length - 1,
+        });
+        walk(node.children, depth + 1);
+      });
+    };
+    walk(tree, 0);
+    return rows;
   }, [todos, selection, selectedCategoryIds, statusFilter, scope, search]);
 
   // --- Todo handlers ---
@@ -368,30 +404,37 @@ export default function TodoBoard({
               </select>
             </div>
 
-            {visibleTodos.length === 0 ? (
+            {visibleRows.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-300 py-16 text-center text-sm text-gray-400 dark:border-gray-700">
                 タスクがありません。「タスク追加」から作成しましょう。
               </div>
             ) : (
               <ul className="flex flex-col gap-2">
-                {visibleTodos.map((t) => (
+                {visibleRows.map((row) => (
                   <TodoItem
-                    key={t.id}
-                    todo={t}
+                    key={row.todo.id}
+                    todo={row.todo}
+                    depth={row.depth}
+                    doneChildren={row.doneChildren}
+                    totalChildren={row.totalChildren}
+                    canMoveUp={row.canMoveUp}
+                    canMoveDown={row.canMoveDown}
                     categoryName={
-                      t.categoryId
-                        ? (categoryMap.get(t.categoryId)?.name ?? null)
+                      row.todo.categoryId
+                        ? (categoryMap.get(row.todo.categoryId)?.name ?? null)
                         : null
                     }
                     categoryColor={
-                      t.categoryId
-                        ? (categoryMap.get(t.categoryId)?.color ?? null)
+                      row.todo.categoryId
+                        ? (categoryMap.get(row.todo.categoryId)?.color ?? null)
                         : null
                     }
-                    onToggleDone={() => toggleDone(t)}
-                    onCycleStatus={() => cycleStatus(t)}
-                    onEdit={() => openEditTodo(t)}
-                    onDelete={() => removeTodo(t)}
+                    onToggleDone={() => toggleDone(row.todo)}
+                    onCycleStatus={() => cycleStatus(row.todo)}
+                    onEdit={() => openEditTodo(row.todo)}
+                    onDelete={() => removeTodo(row.todo)}
+                    onMoveUp={() => actions.moveTodo(row.todo.id, "up")}
+                    onMoveDown={() => actions.moveTodo(row.todo.id, "down")}
                   />
                 ))}
               </ul>
@@ -413,6 +456,7 @@ export default function TodoBoard({
         open={todoFormOpen}
         initial={editingTodo}
         categories={categories}
+        todos={todos}
         defaultCategoryId={todoFormCategory}
         onClose={() => setTodoFormOpen(false)}
         onSubmit={submitTodo}

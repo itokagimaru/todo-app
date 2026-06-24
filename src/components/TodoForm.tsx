@@ -1,10 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { Todo, Category, Priority, Status } from "@/lib/types";
+import type { Todo, Category, Priority, Status, TodoNode } from "@/lib/types";
 import {
   PRIORITY_LABELS,
   STATUS_LABELS,
   DAY_LABELS,
   buildCategoryTree,
+  buildTodoTree,
+  collectTodoDescendantIds,
   type CategoryNode,
 } from "@/lib/types";
 import type { TodoInput } from "@/lib/types";
@@ -14,6 +16,7 @@ interface Props {
   open: boolean;
   initial: Todo | null; // null なら新規作成
   categories: Category[];
+  todos: Todo[]; // 親タスク選択肢の元
   defaultCategoryId: string | null;
   onClose: () => void;
   onSubmit: (input: TodoInput & { status?: Status }) => void;
@@ -33,10 +36,44 @@ function buildOptions(categories: Category[]): { id: string; label: string }[] {
   return out;
 }
 
+// 親タスク選択肢。自分自身とその子孫は除外（循環防止）。
+function buildParentOptions(
+  todos: Todo[],
+  excludeId: string | null
+): { id: string; label: string }[] {
+  const exclude = new Set<string>();
+  if (excludeId) {
+    const tree = buildTodoTree(todos);
+    const find = (nodes: TodoNode[]): TodoNode | null => {
+      for (const n of nodes) {
+        if (n.id === excludeId) return n;
+        const r = find(n.children);
+        if (r) return r;
+      }
+      return null;
+    };
+    const self = find(tree);
+    if (self) for (const id of collectTodoDescendantIds(self)) exclude.add(id);
+  }
+  const tree = buildTodoTree(todos);
+  const out: { id: string; label: string }[] = [];
+  const walk = (nodes: TodoNode[], depth: number) => {
+    for (const n of nodes) {
+      if (!exclude.has(n.id)) {
+        out.push({ id: n.id, label: `${"　".repeat(depth)}${n.title}` });
+      }
+      walk(n.children, depth + 1);
+    }
+  };
+  walk(tree, 0);
+  return out;
+}
+
 export default function TodoForm({
   open,
   initial,
   categories,
+  todos,
   defaultCategoryId,
   onClose,
   onSubmit,
@@ -51,6 +88,7 @@ export default function TodoForm({
   const [tags, setTags] = useState("");
   const [recurEnabled, setRecurEnabled] = useState(false);
   const [recurDays, setRecurDays] = useState<number[]>([]);
+  const [parentId, setParentId] = useState<string | null>(null);
 
   // モーダルを開くたびに初期値を流し込む
   useEffect(() => {
@@ -66,6 +104,7 @@ export default function TodoForm({
       setTags(initial.tags.join(", "));
       setRecurEnabled(!!initial.recurrence);
       setRecurDays(initial.recurrence?.daysOfWeek ?? []);
+      setParentId(initial.parentId);
     } else {
       setTitle("");
       setDescription("");
@@ -77,6 +116,7 @@ export default function TodoForm({
       setTags("");
       setRecurEnabled(false);
       setRecurDays([]);
+      setParentId(null);
     }
   }, [open, initial, defaultCategoryId]);
 
@@ -94,6 +134,7 @@ export default function TodoForm({
   if (!open) return null;
 
   const options = buildOptions(categories);
+  const parentOptions = buildParentOptions(todos, initial?.id ?? null);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -110,6 +151,7 @@ export default function TodoForm({
       title,
       description,
       categoryId,
+      parentId,
       priority,
       status,
       startDate: startDate || null,
@@ -210,6 +252,24 @@ export default function TodoForm({
                 {(Object.keys(PRIORITY_LABELS) as Priority[]).map((p) => (
                   <option key={p} value={p}>
                     {PRIORITY_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                親タスク（サブタスク化）
+              </label>
+              <select
+                value={parentId ?? ""}
+                onChange={(e) => setParentId(e.target.value || null)}
+                className="w-full rounded-md border border-gray-300 bg-white px-2 py-2 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-800"
+              >
+                <option value="">なし（最上位）</option>
+                {parentOptions.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
                   </option>
                 ))}
               </select>

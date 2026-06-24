@@ -25,6 +25,8 @@ export interface Todo {
   title: string;
   description: string;
   categoryId: string | null; // 未分類は null
+  parentId: string | null; // 親Todoの id。最上位は null
+  order: number; // 同一親内での並び順（昇順）
   priority: Priority;
   status: Status;
   startDate: string | null; // 開始日 ISO (YYYY-MM-DD)。未満の日は通常一覧で非表示
@@ -33,6 +35,11 @@ export interface Todo {
   updatedAt: string; // ISO 8601
   tags: string[];
   recurrence: Recurrence | null; // 繰り返しなしは null
+}
+
+// 階層レンダリング用：Todoを木構造にしたもの
+export interface TodoNode extends Todo {
+  children: TodoNode[];
 }
 
 // カテゴリツリー表示用（子を再帰的に保持）
@@ -45,12 +52,51 @@ export interface TodoInput {
   title: string;
   description?: string;
   categoryId?: string | null;
+  parentId?: string | null;
   priority?: Priority;
   status?: Status;
   startDate?: string | null;
   dueDate?: string | null;
   tags?: string[];
   recurrence?: Recurrence | null;
+}
+
+// 同階層内の比較関数（order昇順、同値はcreatedAt昇順）
+function compareTodoSiblings(a: Todo, b: Todo): number {
+  if (a.order !== b.order) return a.order - b.order;
+  return a.createdAt.localeCompare(b.createdAt);
+}
+
+// フラットなTodo配列を親子ツリーに変換する
+export function buildTodoTree(todos: Todo[]): TodoNode[] {
+  const map = new Map<string, TodoNode>();
+  for (const t of todos) map.set(t.id, { ...t, children: [] });
+
+  const roots: TodoNode[] = [];
+  for (const t of todos) {
+    const node = map.get(t.id)!;
+    if (t.parentId && map.has(t.parentId)) {
+      map.get(t.parentId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  const sortNodes = (nodes: TodoNode[]) => {
+    nodes.sort(compareTodoSiblings);
+    nodes.forEach((n) => sortNodes(n.children));
+  };
+  sortNodes(roots);
+  return roots;
+}
+
+// あるTodoとその全子孫の id を集める（循環防止・削除カスケード用）
+export function collectTodoDescendantIds(
+  node: TodoNode,
+  acc: string[] = []
+): string[] {
+  acc.push(node.id);
+  for (const child of node.children) collectTodoDescendantIds(child, acc);
+  return acc;
 }
 
 export interface CategoryInput {

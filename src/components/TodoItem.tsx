@@ -1,7 +1,13 @@
 import { type ReactNode } from "react";
 import type { Todo, Priority } from "@/lib/types";
 import { PRIORITY_LABELS, DAY_LABELS } from "@/lib/types";
-import { CheckIcon, EditIcon, TrashIcon } from "./icons";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  CheckIcon,
+  EditIcon,
+  TrashIcon,
+} from "./icons";
 
 // 説明文中の http(s) URL を <a> 化する。URL 末尾の句読点はリンクから除外。
 const URL_RE = /(https?:\/\/[^\s<>"]+[^\s<>"。、，．!?\)\]\}>])/g;
@@ -31,12 +37,19 @@ function linkify(text: string): ReactNode[] {
 
 interface Props {
   todo: Todo;
+  depth: number;
+  doneChildren: number;
+  totalChildren: number;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   categoryName: string | null;
   categoryColor: string | null;
   onToggleDone: () => void;
   onCycleStatus: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }
 
 const priorityStyles: Record<Priority, string> = {
@@ -55,18 +68,29 @@ function isOverdue(dueDate: string | null, done: boolean): boolean {
 
 export default function TodoItem({
   todo,
+  depth,
+  doneChildren,
+  totalChildren,
+  canMoveUp,
+  canMoveDown,
   categoryName,
   categoryColor,
   onToggleDone,
   onCycleStatus,
   onEdit,
   onDelete,
+  onMoveUp,
+  onMoveDown,
 }: Props) {
   const done = todo.status === "done";
   const overdue = isOverdue(todo.dueDate, done);
+  const indent = depth > 0 ? { marginLeft: `${depth * 20}px` } : undefined;
 
   return (
-    <li className="group flex items-start gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700">
+    <li
+      style={indent}
+      className="group flex items-start gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700"
+    >
       <button
         type="button"
         onClick={onToggleDone}
@@ -98,6 +122,14 @@ export default function TodoItem({
         </button>
 
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          {totalChildren > 0 && (
+            <span
+              className="rounded bg-indigo-100 px-1.5 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300"
+              title="サブタスクの完了状況"
+            >
+              {doneChildren}/{totalChildren}
+            </span>
+          )}
           {todo.status === "in_progress" && (
             <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
               進行中
@@ -173,6 +205,24 @@ export default function TodoItem({
       </div>
 
       <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity sm:gap-0.5 sm:opacity-0 sm:group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={!canMoveUp}
+          className="rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-gray-800 dark:hover:text-gray-200 sm:p-1.5"
+          aria-label="一つ上に移動"
+        >
+          <ArrowUpIcon className="h-5 w-5 sm:h-4 sm:w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={!canMoveDown}
+          className="rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-gray-800 dark:hover:text-gray-200 sm:p-1.5"
+          aria-label="一つ下に移動"
+        >
+          <ArrowDownIcon className="h-5 w-5 sm:h-4 sm:w-4" />
+        </button>
         <button
           type="button"
           onClick={onCycleStatus}

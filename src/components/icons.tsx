@@ -82,6 +82,12 @@ export const SettingsIcon = (p: IconProps) =>
     </>
   );
 
+export const ArrowUpIcon = (p: IconProps) =>
+  base(p, <path d="M12 19V5M5 12l7-7 7 7" />);
+
+export const ArrowDownIcon = (p: IconProps) =>
+  base(p, <path d="M12 5v14M5 12l7 7 7-7" />);
+
 export const RefreshIcon = (p: IconProps) =>
   base(
     p,
