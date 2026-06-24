@@ -36,10 +36,31 @@ function buildOptions(categories: Category[]): { id: string; label: string }[] {
   return out;
 }
 
-// 親タスク選択肢。自分自身とその子孫は除外（循環防止）。
+// 自分のカテゴリと、その祖先カテゴリの id 集合を返す。
+// 未分類（null）の場合は null のみ（未分類同士しか親子にできない）。
+function getAllowedParentCategoryIds(
+  categories: Category[],
+  currentCategoryId: string | null
+): Set<string | null> {
+  const allowed = new Set<string | null>([currentCategoryId]);
+  if (currentCategoryId) {
+    const map = new Map(categories.map((c) => [c.id, c]));
+    let cur = map.get(currentCategoryId);
+    while (cur?.parentId) {
+      allowed.add(cur.parentId);
+      cur = map.get(cur.parentId);
+    }
+  }
+  return allowed;
+}
+
+// 親タスク選択肢。自分自身とその子孫は除外し（循環防止）、
+// 候補の categoryId は「自分のカテゴリまたは祖先カテゴリ」に限定する。
 function buildParentOptions(
   todos: Todo[],
-  excludeId: string | null
+  categories: Category[],
+  excludeId: string | null,
+  currentCategoryId: string | null
 ): { id: string; label: string }[] {
   const exclude = new Set<string>();
   if (excludeId) {
@@ -55,11 +76,12 @@ function buildParentOptions(
     const self = find(tree);
     if (self) for (const id of collectTodoDescendantIds(self)) exclude.add(id);
   }
+  const allowedCats = getAllowedParentCategoryIds(categories, currentCategoryId);
   const tree = buildTodoTree(todos);
   const out: { id: string; label: string }[] = [];
   const walk = (nodes: TodoNode[], depth: number) => {
     for (const n of nodes) {
-      if (!exclude.has(n.id)) {
+      if (!exclude.has(n.id) && allowedCats.has(n.categoryId)) {
         out.push({ id: n.id, label: `${"　".repeat(depth)}${n.title}` });
       }
       walk(n.children, depth + 1);
@@ -131,10 +153,25 @@ export default function TodoForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, recurEnabled]);
 
+  // カテゴリが変わって、現在の親タスクの categoryId が許可範囲外になったらクリア
+  useEffect(() => {
+    if (!open) return;
+    if (!parentId) return;
+    const allowed = getAllowedParentCategoryIds(categories, categoryId);
+    const parent = todos.find((t) => t.id === parentId);
+    if (!parent || !allowed.has(parent.categoryId)) setParentId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, categoryId]);
+
   if (!open) return null;
 
   const options = buildOptions(categories);
-  const parentOptions = buildParentOptions(todos, initial?.id ?? null);
+  const parentOptions = buildParentOptions(
+    todos,
+    categories,
+    initial?.id ?? null,
+    categoryId
+  );
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
