@@ -55,6 +55,8 @@ export default function TodoBoard({
 }: Props) {
   const [selection, setSelection] = useState<Selection>({ kind: "all" });
   const [statusFilter, setStatusFilter] = useState<"all" | Status>("all");
+  // 表示範囲: "active"=開始日が今日以前のものだけ / "upcoming"=未開始のみ / "all"=全部
+  const [scope, setScope] = useState<"active" | "upcoming" | "all">("active");
   const [search, setSearch] = useState("");
   const [mobileSidebar, setMobileSidebar] = useState(false);
 
@@ -76,13 +78,24 @@ export default function TodoBoard({
     return m;
   }, [categories]);
 
-  // サイドバー件数（未完了のみ）。各Todoは所属カテゴリとその全祖先にカウントする
+  // サイドバー件数は scope に合わせて変える（active=開始済のみ等）。各Todoは所属カテゴリと全祖先にカウントする
+  const scopedTodos = useMemo(() => {
+    const todayISO = new Date().toLocaleDateString("sv-SE");
+    return todos.filter((t) => {
+      if (t.status === "done") return false;
+      const notYetStarted = t.startDate ? t.startDate > todayISO : false;
+      if (scope === "active" && notYetStarted) return false;
+      if (scope === "upcoming" && !notYetStarted) return false;
+      return true;
+    });
+  }, [todos, scope]);
+
   const counts = useMemo(() => {
     const parentOf = new Map<string, string | null>();
     for (const c of categories) parentOf.set(c.id, c.parentId);
     const map = new Map<string, number>();
-    for (const t of todos) {
-      if (t.status === "done" || !t.categoryId) continue;
+    for (const t of scopedTodos) {
+      if (!t.categoryId) continue;
       let cur: string | null = t.categoryId;
       const seen = new Set<string>();
       while (cur && !seen.has(cur)) {
@@ -92,15 +105,12 @@ export default function TodoBoard({
       }
     }
     return map;
-  }, [todos, categories]);
+  }, [scopedTodos, categories]);
 
-  const allCount = useMemo(
-    () => todos.filter((t) => t.status !== "done").length,
-    [todos]
-  );
+  const allCount = scopedTodos.length;
   const uncategorizedCount = useMemo(
-    () => todos.filter((t) => t.status !== "done" && !t.categoryId).length,
-    [todos]
+    () => scopedTodos.filter((t) => !t.categoryId).length,
+    [scopedTodos]
   );
 
   const selectedCategoryIds = useMemo(() => {
@@ -112,7 +122,13 @@ export default function TodoBoard({
 
   const visibleTodos = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const todayISO = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD (local)
     const filtered = todos.filter((t) => {
+      // 表示範囲フィルタ: startDate と今日の比較で未開始判定
+      const notYetStarted = t.startDate ? t.startDate > todayISO : false;
+      if (scope === "active" && notYetStarted) return false;
+      if (scope === "upcoming" && !notYetStarted) return false;
+
       if (selection.kind === "uncategorized" && t.categoryId) return false;
       if (
         selection.kind === "category" &&
@@ -140,7 +156,7 @@ export default function TodoBoard({
       return a.createdAt.localeCompare(b.createdAt);
     });
     return filtered;
-  }, [todos, selection, selectedCategoryIds, statusFilter, search]);
+  }, [todos, selection, selectedCategoryIds, statusFilter, scope, search]);
 
   // --- Todo handlers ---
   function openAddTodo() {
@@ -324,6 +340,18 @@ export default function TodoBoard({
                 placeholder="検索…"
                 className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-800"
               />
+              <select
+                value={scope}
+                onChange={(e) =>
+                  setScope(e.target.value as "active" | "upcoming" | "all")
+                }
+                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-800"
+                title="開始日に応じた表示範囲"
+              >
+                <option value="active">現在のタスク</option>
+                <option value="upcoming">未開始のタスク</option>
+                <option value="all">すべて</option>
+              </select>
               <select
                 value={statusFilter}
                 onChange={(e) =>

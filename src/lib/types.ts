@@ -27,6 +27,7 @@ export interface Todo {
   categoryId: string | null; // 未分類は null
   priority: Priority;
   status: Status;
+  startDate: string | null; // 開始日 ISO (YYYY-MM-DD)。未満の日は通常一覧で非表示
   dueDate: string | null; // ISO 日付 (YYYY-MM-DD)
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
@@ -46,6 +47,7 @@ export interface TodoInput {
   categoryId?: string | null;
   priority?: Priority;
   status?: Status;
+  startDate?: string | null;
   dueDate?: string | null;
   tags?: string[];
   recurrence?: Recurrence | null;

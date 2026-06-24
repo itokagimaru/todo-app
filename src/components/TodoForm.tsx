@@ -46,6 +46,7 @@ export default function TodoForm({
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [priority, setPriority] = useState<Priority>("medium");
   const [status, setStatus] = useState<Status>("todo");
+  const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [tags, setTags] = useState("");
   const [recurEnabled, setRecurEnabled] = useState(false);
@@ -60,6 +61,7 @@ export default function TodoForm({
       setCategoryId(initial.categoryId);
       setPriority(initial.priority);
       setStatus(initial.status);
+      setStartDate(initial.startDate ?? "");
       setDueDate(initial.dueDate ?? "");
       setTags(initial.tags.join(", "));
       setRecurEnabled(!!initial.recurrence);
@@ -70,6 +72,7 @@ export default function TodoForm({
       setCategoryId(defaultCategoryId);
       setPriority("medium");
       setStatus("todo");
+      setStartDate("");
       setDueDate("");
       setTags("");
       setRecurEnabled(false);
@@ -99,12 +102,17 @@ export default function TodoForm({
       alert("繰り返しを有効にする場合は少なくとも1つの曜日を選んでください");
       return;
     }
+    if (startDate && dueDate && startDate > dueDate) {
+      alert("開始日は期限以前にしてください");
+      return;
+    }
     onSubmit({
       title,
       description,
       categoryId,
       priority,
       status,
+      startDate: startDate || null,
       dueDate: dueDate || null,
       tags: tags
         .split(",")
@@ -205,6 +213,19 @@ export default function TodoForm({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                開始日（任意）
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full rounded-md border border-gray-300 bg-white px-2 py-2 text-sm outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-800"
+                title="この日付までは通常の一覧に表示されません"
+              />
             </div>
 
             <div>

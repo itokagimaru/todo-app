@@ -147,9 +147,13 @@ export function applyRollover(todos: Todo[], today: Date): Todo[] {
   return changed ? next : todos;
 }
 
-// 既存 JSON に recurrence キーが無いケースの後方互換
+// 既存 JSON に recurrence/startDate キーが無いケースの後方互換
 function normalizeTodos(todos: Todo[]): Todo[] {
-  return todos.map((t) => ({ ...t, recurrence: t.recurrence ?? null }));
+  return todos.map((t) => ({
+    ...t,
+    recurrence: t.recurrence ?? null,
+    startDate: t.startDate ?? null,
+  }));
 }
 
 // daysOfWeek を 0〜6 の範囲内に揃え、重複を除いてソート。空配列は null 扱いに。
@@ -333,6 +337,7 @@ export class Store {
       categoryId: input.categoryId ?? null,
       priority: input.priority ?? "medium",
       status: input.status ?? "todo",
+      startDate: input.startDate || null,
       dueDate: input.dueDate || null,
       createdAt: now(),
       updatedAt: now(),
@@ -361,6 +366,10 @@ export class Store {
                     : t.categoryId,
                 priority: patch.priority ?? t.priority,
                 status: patch.status ?? t.status,
+                startDate:
+                  patch.startDate !== undefined
+                    ? patch.startDate || null
+                    : t.startDate,
                 dueDate:
                   patch.dueDate !== undefined
                     ? patch.dueDate || null

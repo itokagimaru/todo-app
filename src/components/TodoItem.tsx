@@ -120,6 +120,16 @@ export default function TodoItem({
             {PRIORITY_LABELS[todo.priority]}
           </span>
 
+          {todo.startDate &&
+            todo.startDate > new Date().toLocaleDateString("sv-SE") && (
+              <span
+                className="rounded bg-cyan-100 px-1.5 py-0.5 text-xs text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300"
+                title="開始日まで通常一覧には出ません"
+              >
+                開始: {todo.startDate} ({DAY_LABELS[new Date(todo.startDate + "T00:00").getDay()]})
+              </span>
+            )}
+
           {todo.dueDate && (
             <span
               className={`rounded px-1.5 py-0.5 text-xs ${
