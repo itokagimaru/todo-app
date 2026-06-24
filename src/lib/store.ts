@@ -122,6 +122,9 @@ export function nextDueDate(
 }
 
 // 期限切れの「完了済み × 繰り返しあり」Todoを未完了に戻し、次回期日へ進める。
+// rollover は「期日が厳密に過去（昨日以前）」のときだけ発動する。
+// 今日が期日のうちは done のまま残し、翌日にアプリを触ったタイミングで初めて
+// 未完了+次回期日へ進む（その日のうちは完了状態を見たい、という体験を優先）。
 // 何も変更が無ければ元の参照をそのまま返す（idempotent）。
 export function applyRollover(todos: Todo[], today: Date): Todo[] {
   const today0 = new Date(today);
@@ -130,7 +133,8 @@ export function applyRollover(todos: Todo[], today: Date): Todo[] {
   const next = todos.map((t) => {
     if (!t.recurrence || t.status !== "done" || !t.dueDate) return t;
     const due = parseISODate(t.dueDate);
-    if (due.getTime() > today0.getTime()) return t; // まだ未来
+    // 今日以降（今日含む）はまだ rollover しない
+    if (due.getTime() >= today0.getTime()) return t;
     const newDue = nextDueDate(due, t.recurrence.daysOfWeek, today0);
     changed = true;
     return {
